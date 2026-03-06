@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUDDY</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg:        #0a0b0d;
+    --bg2:       #0f1114;
+    --bg3:       #161920;
+    --border:    #1e2330;
+    --green:     #00e5a0;
+    --green-dim: #00664a;
+    --amber:     #f5a623;
+    --amber-dim: #7a5210;
+    --red:       #ff4757;
+    --blue:      #4da6ff;
+    --text:      #c8d0e0;
+    --text-dim:  #5a6478;
+    --text-muted:#323b4e;
+    --font-mono: 'Space Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    grid-template-rows: 48px 1fr 80px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Topbar ──────────────────────────────────────────────────── */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: var(--green);
+    text-transform: uppercase;
+  }
+
+  .logo span { color: var(--text-dim); font-weight: 400; margin-left: 8px; }
+
+  .topbar-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green-dim);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .status-dot.idle    { background: var(--text-muted); box-shadow: none; }
+  .status-dot.listening { background: var(--green);
+    box-shadow: 0 0 8px var(--green), 0 0 20px var(--green-dim);
+    animation: pulse 1s ease-in-out infinite; }
+  .status-dot.thinking { background: var(--amber);
+    box-shadow: 0 0 8px var(--amber); animation: pulse 0.6s ease-in-out infinite; }
+  .status-dot.speaking { background: var(--blue);
+    box-shadow: 0 0 8px var(--blue); animation: pulse 0.8s ease-in-out infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  #state-label {
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 10px;
+    min-width: 70px;
+  }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  .sidebar {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .panel {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* Mic Level */
+  .mic-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 36px;
+  }
+
+  .mic-bar {
+    flex: 1;
+    background: var(--border);
+    border-radius: 1px;
+    transition: height 0.05s ease, background 0.1s;
+    min-height: 3px;
+  }
+
+  /* Timers */
+  .timer-list { display: flex; flex-direction: column; gap: 6px; }
+  .timer-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .timer-label { color: var(--text-dim); margin-bottom: 2px; font-size: 9px; letter-spacing: 0.1em; }
+  .timer-countdown { color: var(--amber); font-size: 15px; }
+  .no-timers { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+
+  /* Memory */
+  .memory-list { display: flex; flex-direction: column; gap: 5px; max-height: 200px; overflow-y: auto; }
+  .memory-item {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 5px 8px;
+    background: var(--bg3);
+    border-left: 2px solid var(--green-dim);
+    border-radius: 0 2px 2px 0;
+    line-height: 1.4;
+  }
+  .no-memory { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+
+  /* ── Main Chat Area ───────────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    position: relative;
+  }
+
+  /* Waveform visualiser */
+  .waveform-bar {
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--green-dim), transparent);
+    transition: opacity 0.3s;
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .waveform-bar.active { opacity: 1; animation: wave 2s ease-in-out infinite; }
+  @keyframes wave {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  .chat-log::-webkit-scrollbar { width: 6px; }
+  .chat-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: 85%;
+    animation: fadeUp 0.2s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.buddy { align-self: flex-start; align-items: flex-start; }
+  .msg.proactive { align-self: flex-start; align-items: flex-start; }
+
+  .msg-sender {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .msg.user    .msg-sender { color: var(--blue); }
+  .msg.buddy   .msg-sender { color: var(--green); }
+  .msg.proactive .msg-sender { color: var(--amber); }
+
+  .msg-bubble {
+    padding: 11px 15px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    font-weight: 300;
+    position: relative;
+  }
+
+  .msg.user .msg-bubble {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .msg.buddy .msg-bubble {
+    background: #0d1a14;
+    border: 1px solid var(--green-dim);
+    color: var(--text);
+  }
+
+  .msg.proactive .msg-bubble {
+    background: #1a1500;
+    border: 1px solid var(--amber-dim);
+    color: var(--text);
+  }
+
+  /* Streaming cursor */
+  .cursor {
+    display: inline-block;
+    width: 2px; height: 14px;
+    background: var(--green);
+    margin-left: 2px;
+    animation: blink 0.7s step-end infinite;
+    vertical-align: middle;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Thinking indicator */
+  .thinking-dots {
+    display: flex; gap: 5px; padding: 12px 15px;
+    background: #0d1a14;
+    border: 1px solid var(--green-dim);
+    border-radius: 6px;
+    width: fit-content;
+  }
+  .thinking-dots span {
+    width: 5px; height: 5px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50%       { transform: translateY(-6px); opacity: 1; }
+  }
+
+  /* ── Bottombar ────────────────────────────────────────────────── */
+  .bottombar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+  }
+
+  .text-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .text-input::placeholder { color: var(--text-muted); }
+  .text-input:focus { border-color: var(--green-dim); }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 4px;
+    border: 1px solid;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-listen {
+    background: #001a0d;
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .btn-listen:hover { background: #003322; }
+  .btn-listen.active {
+    background: var(--green);
+    color: var(--bg);
+    box-shadow: 0 0 12px var(--green-dim);
+  }
+
+  .btn-stop {
+    background: #1a0005;
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-stop:hover { background: #330010; }
+
+  .btn-send {
+    background: #001020;
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  .btn-send:hover { background: #002040; }
+
+  .mic-icon { font-size: 15px; }
+
+  /* SVG waveform canvas */
+  #waveCanvas {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #waveCanvas.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Topbar ──────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="logo">BUDDY<span>/ local AI companion</span></div>
+    <div class="topbar-status">
+      <div class="status-dot idle" id="statusDot"></div>
+      <span id="state-label">IDLE</span>
+    </div>
+  </header>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <div class="panel">
+      <div class="panel-title">Mic Level</div>
+      <div class="mic-bars" id="micBars">
+        <!-- bars generated by JS -->
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Active Timers</div>
+      <div class="timer-list" id="timerList">
+        <div class="no-timers">—</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Memory</div>
+      <div class="memory-list" id="memoryList">
+        <div class="no-memory">—</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Chat Area ────────────────────────────────────────────── -->
+  <main class="main">
+    <canvas id="waveCanvas"></canvas>
+    <div class="chat-log" id="chatLog">
+      <div class="msg buddy">
+        <div class="msg-sender">BUDDY</div>
+        <div class="msg-bubble">
+          Systems online. Say the wake word or use the text input below. What's good?
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Bottombar ───────────────────────────────────────────── -->
+  <footer class="bottombar">
+    <button class="btn btn-listen" id="btnListen" onclick="startListening()">
+      <span class="mic-icon">🎙</span> Listen
+    </button>
+    <button class="btn btn-stop" id="btnStop" onclick="stopBuddy()">■ Stop</button>
+    <input class="text-input" id="textInput" type="text"
+           placeholder="Type a message and press Enter…"
+           onkeydown="if(event.key==='Enter') sendText()">
+    <button class="btn btn-send" onclick="sendText()">Send ↵</button>
+  </footer>
+
+</div>
+
+<script>
+// ── Setup ──────────────────────────────────────────────────────────────────
+const socket = io();
+
+// Build mic bars
+const micBars  = document.getElementById('micBars');
+const NUM_BARS = 28;
+const bars     = [];
+for (let i = 0; i < NUM_BARS; i++) {
+  const b = document.createElement('div');
+  b.className = 'mic-bar';
+  micBars.appendChild(b);
+  bars.push(b);
+}
+
+// Waveform canvas
+const canvas = document.getElementById('waveCanvas');
+const ctx2d  = canvas.getContext('2d');
+let waveLevel = 0;
+let wavePhase = 0;
+let animFrame;
+
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentState      = 'idle';
+let streamingBubble   = null;
+let thinkingEl        = null;
+let timerIntervals    = {};  // id → interval
+let activeTimers      = [];
+
+// ── Socket events ─────────────────────────────────────────────────────────
+
+socket.on('state_change', ({state}) => {
+  setUIState(state);
+});
+
+socket.on('token', ({text}) => {
+  removeThinking();
+  if (!streamingBubble) {
+    streamingBubble = addMessage('buddy', '');
+  }
+  appendToken(streamingBubble, text);
+});
+
+socket.on('response_done', ({text}) => {
+  if (streamingBubble) {
+    // Remove cursor
+    const cursor = streamingBubble.querySelector('.cursor');
+    if (cursor) cursor.remove();
+    streamingBubble = null;
+  }
+});
+
+socket.on('mic_level', ({level}) => {
+  updateMicBars(level);
+  waveLevel = level;
+});
+
+socket.on('proactive', ({text}) => {
+  addMessage('proactive', text);
+});
+
+socket.on('timer_update', ({timers}) => {
+  activeTimers = timers;
+  renderTimers(timers);
+});
+
+socket.on('memory_update', ({memories}) => {
+  renderMemories(memories);
+});
+
+// ── UI State machine ──────────────────────────────────────────────────────
+
+function setUIState(state) {
+  currentState = state;
+  const dot   = document.getElementById('statusDot');
+  const label = document.getElementById('state-label');
+  const btnL  = document.getElementById('btnListen');
+  const waveEl = document.getElementById('waveCanvas');
+
+  dot.className   = `status-dot ${state}`;
+  label.textContent = state.toUpperCase();
+
+  btnL.classList.toggle('active', state === 'listening');
+  waveEl.classList.toggle('visible', state === 'listening');
+
+  if (state === 'thinking' && !thinkingEl) {
+    thinkingEl = addThinkingIndicator();
+  } else if (state !== 'thinking') {
+    removeThinking();
+  }
+}
+
+// ── Chat rendering ────────────────────────────────────────────────────────
+
+function addMessage(role, text) {
+  const log  = document.getElementById('chatLog');
+  const msg  = document.createElement('div');
+  msg.className = `msg ${role}`;
+
+  const sender = document.createElement('div');
+  sender.className = 'msg-sender';
+  sender.textContent = role === 'user' ? 'YOU' : role === 'proactive' ? '★ BUDDY' : 'BUDDY';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+
+  if (role !== 'user') {
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    bubble.appendChild(cursor);
+  }
+
+  msg.appendChild(sender);
+  msg.appendChild(bubble);
+  log.appendChild(msg);
+  log.scrollTop = log.scrollHeight;
+  return bubble;
+}
+
+function appendToken(bubble, token) {
+  const cursor = bubble.querySelector('.cursor');
+  const tn = document.createTextNode(token);
+  if (cursor) {
+    bubble.insertBefore(tn, cursor);
+  } else {
+    bubble.appendChild(tn);
+  }
+  document.getElementById('chatLog').scrollTop = 999999;
+}
+
+function addThinkingIndicator() {
+  const log = document.getElementById('chatLog');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg buddy';
+  wrap.id = 'thinking-indicator';
+
+  const sender = document.createElement('div');
+  sender.className = 'msg-sender';
+  sender.textContent = 'BUDDY';
+
+  const dots = document.createElement('div');
+  dots.className = 'thinking-dots';
+  dots.innerHTML = '<span></span><span></span><span></span>';
+
+  wrap.appendChild(sender);
+  wrap.appendChild(dots);
+  log.appendChild(wrap);
+  log.scrollTop = 999999;
+  return wrap;
+}
+
+function removeThinking() {
+  const el = document.getElementById('thinking-indicator');
+  if (el) el.remove();
+  thinkingEl = null;
+}
+
+// ── Mic bars ──────────────────────────────────────────────────────────────
+
+function updateMicBars(level) {
+  const colors = {
+    low:  'var(--green-dim)',
+    mid:  'var(--green)',
+    high: 'var(--amber)',
+  };
+  bars.forEach((bar, i) => {
+    const normalised = i / NUM_BARS;
+    const height = level > normalised
+      ? Math.max(3, Math.round(
+          (1 - Math.abs(normalised - level * 0.9)) * 36
+        ) + Math.random() * 6)
+      : 3;
+    bar.style.height = height + 'px';
+    const col = level < 0.3 ? colors.low : level < 0.7 ? colors.mid : colors.high;
+    bar.style.background = level > normalised ? col : 'var(--border)';
+  });
+}
+
+// ── Waveform canvas animation ─────────────────────────────────────────────
+
+function drawWave() {
+  animFrame = requestAnimationFrame(drawWave);
+  ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+  if (currentState !== 'listening') return;
+
+  wavePhase += 0.04;
+  const h  = canvas.height;
+  const w  = canvas.width;
+  const amp = waveLevel * (h * 0.45);
+
+  ctx2d.beginPath();
+  ctx2d.moveTo(0, h / 2);
+  for (let x = 0; x < w; x++) {
+    const y = h / 2
+      + Math.sin(x * 0.018 + wavePhase) * amp
+      + Math.sin(x * 0.035 + wavePhase * 1.5) * amp * 0.4;
+    ctx2d.lineTo(x, y);
+  }
+  ctx2d.strokeStyle = `rgba(0,229,160,${0.3 + waveLevel * 0.5})`;
+  ctx2d.lineWidth = 1.5;
+  ctx2d.stroke();
+}
+drawWave();
+
+// ── Timer rendering ───────────────────────────────────────────────────────
+
+function renderTimers(timers) {
+  const list = document.getElementById('timerList');
+  if (!timers.length) {
+    list.innerHTML = '<div class="no-timers">—</div>';
+    return;
+  }
+  list.innerHTML = timers.map(t => `
+    <div class="timer-item" id="timer-${t.id}">
+      <div class="timer-label">${escHtml(t.label)}</div>
+      <div class="timer-countdown" data-end="${Date.now() + t.seconds_left * 1000}">
+        ${formatSeconds(Math.round(t.seconds_left))}
+      </div>
+    </div>
+  `).join('');
+}
+
+// Countdown tick
+setInterval(() => {
+  document.querySelectorAll('.timer-countdown').forEach(el => {
+    const endMs = parseFloat(el.dataset.end);
+    const left  = Math.max(0, (endMs - Date.now()) / 1000);
+    el.textContent = formatSeconds(Math.round(left));
+  });
+}, 500);
+
+function formatSeconds(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${pad(m)}:${pad(sec)}`;
+  return `${pad(m)}:${pad(sec)}`;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+// ── Memory rendering ──────────────────────────────────────────────────────
+
+function renderMemories(mems) {
+  const list = document.getElementById('memoryList');
+  if (!mems.length) {
+    list.innerHTML = '<div class="no-memory">—</div>';
+    return;
+  }
+  list.innerHTML = mems.slice(0, 15).map(m => `
+    <div class="memory-item">${escHtml(m)}</div>
+  `).join('');
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────
+
+function startListening() {
+  socket.emit('start_listening');
+}
+
+function stopBuddy() {
+  socket.emit('stop');
+}
+
+function sendText() {
+  const input = document.getElementById('textInput');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addMessage('user', text);
+  socket.emit('text_input', { text });
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

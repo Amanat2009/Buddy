@@ -1,0 +1,42 @@
+# ── Core ─────────────────────────────────────────────────────────────────────
+flask>=3.0.0
+flask-socketio>=5.3.6
+flask-cors>=4.0.0
+eventlet>=0.35.2
+
+# ── Audio Input ───────────────────────────────────────────────────────────────
+pyaudio>=0.2.14
+pvporcupine>=3.0.2          # Wake-word; free access key from picovoice.ai
+webrtcvad>=2.0.10           # Voice Activity Detection
+
+# ── STT ───────────────────────────────────────────────────────────────────────
+# whisper.cpp Python binding — compiled with Vulkan for RX6500XT
+# Install separately: pip install whispercpp
+# Or use the CLI wrapper (included in stt.py fallback)
+whispercpp>=0.0.17          # wraps the whisper.cpp binary
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+requests>=2.31.0            # Ollama REST API (no extra dep needed)
+sseclient-py>=1.8.0         # Streaming SSE from Ollama
+
+# ── TTS ───────────────────────────────────────────────────────────────────────
+# Option 1 — Kokoro (fast, default)
+kokoro-onnx>=0.3.4
+sounddevice>=0.4.7
+onnxruntime>=1.18.0         # use onnxruntime-directml on Windows or standard
+
+# Option 2 — Coqui XTTS-v2 (higher quality, more VRAM)
+# TTS>=0.22.0               # uncomment to enable XTTS-v2
+
+# ── Memory ────────────────────────────────────────────────────────────────────
+mem0ai>=0.1.0
+
+# ── Personality / Sentiment ───────────────────────────────────────────────────
+vaderSentiment>=3.3.2
+
+# ── Scheduling / Utilities ───────────────────────────────────────────────────
+schedule>=1.2.1
+pytz>=2024.1
+simpleaudio>=1.0.4
+numpy>=1.26.0
+python-dotenv>=1.0.0
