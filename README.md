@@ -1,231 +1,217 @@
-# 🤖 Buddy — Local AI Companion
+**🤖 Buddy — Local AI Companion
 
-Always-on, wake-word-activated AI buddy. Runs 100% locally on your machine.
-Built for: **8 GB RAM + RX 6500 XT 8 GB VRAM (Vulkan)**.
+Buddy is an always-on, wake-word-activated AI assistant that runs entirely on your local machine.
 
----
+No cloud APIs. No subscriptions. Your data stays local.
 
-## Stack
+Designed for consumer GPUs and CPUs with optional GPU acceleration.
 
-| Layer | Component |
-|-------|-----------|
-| Wake Word | Porcupine (pvporcupine) |
-| STT | whisper.cpp + large-v3-turbo-q8_0 — Vulkan/GPU |
-| VAD | WebRTC VAD (aggressiveness=2) |
-| LLM | Ollama → huihui_ai/qwen3-abliterated:4b |
-| TTS | Kokoro-82M (default) or Coqui XTTS-v2 |
-| Memory | Mem0 → local Chroma + Ollama embeddings |
-| Web UI | Flask-SocketIO, dark terminal UI |
-| Sentiment | VADER (instant, no GPU) |
+✨ Features
 
----
+Wake-word activated assistant (jarvis, alexa, etc.)
 
-## Quick Start
+Fully local LLM (Ollama)
 
-### 1. Install Python deps
+Real-time speech recognition
 
-```bash
-cd buddy
+Streaming text-to-speech
+
+Long-term memory with Mem0
+
+Sentiment-aware responses
+
+Proactive reminders and check-ins
+
+Real-time web dashboard
+
+🧠 Architecture
+Layer	Technology
+Wake Word	Porcupine
+Voice Activity Detection	WebRTC VAD
+Speech-to-Text	whisper.cpp
+LLM	Ollama
+TTS	Kokoro-82M or XTTS-v2
+Memory	Mem0 + Chroma
+Sentiment	VADER
+Web Interface	Flask-SocketIO
+📦 Requirements
+
+Minimum recommended:
+
+8 GB RAM
+
+Python 3.10+
+
+Ollama installed
+
+Microphone + speakers
+
+Optional GPU acceleration:
+
+NVIDIA / AMD GPU supported by whisper.cpp
+
+Vulkan or CUDA support improves STT speed
+
+🚀 Installation
+1️⃣ Clone the repository
+git clone https://github.com/Amanat2009/Buddy.git
+cd Buddy
+2️⃣ Install Python dependencies
 pip install -r requirements.txt
-```
+3️⃣ Install Ollama and pull models
 
-### 2. Install whisper.cpp (Vulkan build for RX 6500 XT)
+Install Ollama:
 
-```bash
+https://ollama.com/download
+
+Then pull the required models:
+
+ollama pull huihui_ai/qwen3-abliterated:4b
+ollama pull nomic-embed-text
+4️⃣ Install whisper.cpp
 git clone https://github.com/ggml-org/whisper.cpp
 cd whisper.cpp
 
-# Build with Vulkan support
-cmake -B build -DGGML_VULKAN=ON
-cmake --build build --config Release -j4
+Build:
 
-# Download the model
+cmake -B build
+cmake --build build --config Release
+
+Download STT model:
+
 ./models/download-ggml-model.sh large-v3-turbo-q8_0
 
-# Optional: install globally
-sudo cp build/bin/whisper-cli /usr/local/bin/whisper-cpp
+Return to Buddy:
+
 cd ..
-```
+5️⃣ Get a Porcupine Access Key
 
-### 3. Install Ollama and pull the model
+Sign up for a free key:
 
-```bash
-# Install Ollama: https://ollama.com/download
-ollama pull huihui_ai/qwen3-abliterated:4b
-ollama pull nomic-embed-text       # for Mem0 embeddings
-```
+https://picovoice.ai
 
-### 4. Get a free Porcupine access key
+Then edit:
 
-- Sign up at https://picovoice.ai (free tier = unlimited local use)
-- Copy your access key
+config.py
 
-### 5. Configure Buddy
+Example:
 
-Edit `config.py`:
+PICOVOICE_ACCESS_KEY = "your-key"
+WAKE_WORD = "jarvis"
+USER_NAME = "Boss"
+TIMEZONE = "Asia/Kolkata"
+🔊 Install Kokoro TTS Models
 
-```python
-PICOVOICE_ACCESS_KEY = "your-key-here"
-WAKE_WORD            = "jarvis"       # or: alexa, computer, bumblebee, etc.
-USER_NAME            = "Boss"         # how buddy addresses you
-TIMEZONE             = "Asia/Kolkata"
-```
+The TTS model files are not included in the repository because they are large.
 
-### 6. Install Kokoro TTS model files
+Download them automatically using:
 
-```bash
-# Download from HuggingFace
 pip install huggingface_hub
+
 python -c "
 from huggingface_hub import hf_hub_download
 hf_hub_download('hexgrad/Kokoro-82M', 'kokoro-v1.0.onnx', local_dir='.')
 hf_hub_download('hexgrad/Kokoro-82M', 'voices-v1.0.bin', local_dir='.')
 "
-```
 
-### 7. Run
+This will download the required files into the project root.
 
-```bash
+▶️ Run Buddy
 python main.py
-```
 
-Open your browser: **http://127.0.0.1:7860**
+Open the dashboard:
 
----
+http://127.0.0.1:7860
+🧪 Optional: XTTS-v2 Voice Cloning
 
-## XTTS-v2 (Optional — Higher Quality TTS)
+Install XTTS:
 
-If you want XTTS-v2 instead of Kokoro:
-
-```bash
 pip install TTS
-```
 
-In `config.py`:
-```python
+Edit config.py:
+
 TTS_ENGINE = "xtts"
-XTTS_SPEAKER_WAV = "data/speaker.wav"  # record ~30s of your voice
-```
+XTTS_SPEAKER_WAV = "data/speaker.wav"
 
-Place a clean 30-second WAV of someone speaking at `data/speaker.wav` for voice cloning.
+Record a ~30 second clean voice sample and place it at:
 
----
+data/speaker.wav
+⏰ Timer Examples
 
-## Wake Words Available (Built-in, Free)
+Buddy understands natural timer commands without LLM calls:
 
-`alexa`, `americano`, `blueberry`, `bumblebee`, `computer`,
-`grapefruit`, `grasshopper`, `hey google`, `hey siri`, `jarvis`,
-`ok google`, `picovoice`, `porcupine`, `terminator`
-
----
-
-## Vulkan Setup for RX 6500 XT
-
-whisper.cpp uses Vulkan automatically when built with `-DGGML_VULKAN=ON`.
-
-For Ollama GPU acceleration on AMD with ROCm:
-```bash
-# Check: https://rocm.docs.amd.com/
-# RX 6500 XT = gfx1032 — supported in ROCm 5.5+
-HSA_OVERRIDE_GFX_VERSION=10.3.0 ollama serve
-```
-
----
-
-## File Structure
-
-```
+set a timer for 20 minutes
+remind me in an hour
+timer 5 mins
+wake me up in 30
+30 second timer
+2 hours 30 minutes
+📁 Project Structure
 buddy/
-├── main.py              # Orchestrator + entry point
-├── config.py            # All settings (edit this)
-├── requirements.txt
+├ main.py
+├ config.py
+├ requirements.txt
+├ README.md
 │
-├── audio/
-│   ├── beep.py          # Synthesised beep sounds (no audio files)
-│   ├── wake_word.py     # Porcupine wake word detector
-│   ├── mic_input.py     # WebRTC VAD + silence detection recorder
-│   ├── stt.py           # whisper.cpp STT (Vulkan)
-│   └── tts.py           # Kokoro / XTTS-v2 TTS + sentence streamer
+├ audio/
+├ llm/
+├ memory/
+├ personality/
+├ proactive/
+├ context/
+├ web/
 │
-├── llm/
-│   ├── ollama_client.py # Streaming Ollama client + history
-│   └── system_prompt.py # Dynamic system prompt (time, context, mood, memories)
-│
-├── memory/
-│   ├── mem0_client.py   # Mem0 long-term memory
-│   └── storage.py       # JSON persistence (events, context, mood log)
-│
-├── personality/
-│   ├── sentiment.py     # VADER sentiment analyser
-│   └── engine.py        # Mood tracking + context extraction
-│
-├── proactive/
-│   └── scheduler.py     # Morning/evening check-ins, event reminders
-│
-├── context/
-│   └── timer.py         # Natural language timers (regex, non-blocking)
-│
-├── web/
-│   ├── server.py        # Flask-SocketIO real-time UI server
-│   └── templates/
-│       └── index.html   # Dark terminal dashboard
-│
-└── data/                # Auto-created — stores all persistent data
-    ├── events.json
-    ├── context.json
-    ├── mood_log.json
-    └── chroma/          # Mem0 vector store
-```
+└ data/
 
----
+The data/ directory stores persistent memory and logs.
 
-## Timer Examples
+⚠️ Files Not Included in Repo
 
-All detected by regex — zero LLM calls:
+The following files are ignored by Git:
 
-```
-"set a timer for 20 minutes"
-"remind me in an hour"
-"give me 45 minutes"
-"timer 5 mins"
-"wake me up in 30"
-"30 second timer for the pasta"
-"2 hours 30 minutes"
-```
+kokoro-v1.0.onnx
+voices-v1.0.bin
+buddy_env/
+__pycache__/
+.cache/
 
----
+These are downloaded or generated locally.
 
-## Tuning for Your Hardware
+🛠 Troubleshooting
+Wake word not triggering
 
-**RX 6500 XT 8 GB VRAM** is enough for:
-- Kokoro TTS: ~200 MB VRAM
-- qwen3:4b: ~3.5 GB VRAM
-- whisper large-v3-turbo-q8_0: ~1.6 GB VRAM
-- **Total: ~5.3 GB VRAM** — fits comfortably
+Increase sensitivity in config.py.
 
-If VRAM is tight, switch to `whisper-medium.en` (~1 GB) or `qwen3:4b` → `phi3-mini`.
+Ollama not responding
 
----
+Make sure Ollama is running:
 
-## Troubleshooting
+ollama serve
+No microphone input
 
-**Wake word not triggering:**
-- Increase `PORCUPINE_SENSITIVITY` (max 1.0)
-- Check mic index: `python -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count())]"`
+Check device list:
 
-**Ollama not found:**
-- Make sure `ollama serve` is running
-- Check `OLLAMA_HOST` in config.py
+python -c "import sounddevice as sd; print(sd.query_devices())"
+📜 License
 
-**No sound output:**
-- Check `sounddevice` output device: `python -c "import sounddevice as sd; print(sd.query_devices())"`
+MIT License
 
-**Mem0 slow:**
-- First run is slow (model load). Subsequent calls are fast.
-- Uses `nomic-embed-text` for embeddings — make sure it's pulled.
+⭐ Contributing
 
-Required models:
+Contributions, improvements, and ideas are welcome.
 
-Download kokoro-v1.0.onnx and place it in the project root.
+If you build new modules (skills, tools, or agents), feel free to open a pull request.
 
-Download voices-v1.0.bin and place it in the project root.
+🙌 Acknowledgements
+
+Porcupine
+
+whisper.cpp
+
+Ollama
+
+Mem0
+
+Chroma
+
+Kokoro TTS**
