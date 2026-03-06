@@ -214,5 +214,5 @@ Mem0
 
 Chroma
 
-Kokoro TTS\*\*\*
+Kokoro TTS\*\*
 
