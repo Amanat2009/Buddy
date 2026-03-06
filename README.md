@@ -1,4 +1,4 @@
-**🤖 Buddy — Local AI Companion
+\*\*🤖 Buddy — Local AI Companion
 
 Buddy is an always-on, wake-word-activated AI assistant that runs entirely on your local machine.
 
@@ -66,7 +66,7 @@ https://ollama.com/download
 
 Then pull the required models:
 
-ollama pull huihui_ai/qwen3-abliterated:4b
+ollama pull huihui\_ai/qwen3-abliterated:4b
 ollama pull nomic-embed-text
 4️⃣ Install whisper.cpp
 git clone https://github.com/ggml-org/whisper.cpp
@@ -79,7 +79,7 @@ cmake --build build --config Release
 
 Download STT model:
 
-./models/download-ggml-model.sh large-v3-turbo-q8_0
+./models/download-ggml-model.sh large-v3-turbo-q8\_0
 
 Return to Buddy:
 
@@ -96,9 +96,9 @@ config.py
 
 Example:
 
-PICOVOICE_ACCESS_KEY = "your-key"
-WAKE_WORD = "jarvis"
-USER_NAME = "Boss"
+PICOVOICE\_ACCESS\_KEY = "your-key"
+WAKE\_WORD = "jarvis"
+USER\_NAME = "Boss"
 TIMEZONE = "Asia/Kolkata"
 🔊 Install Kokoro TTS Models
 
@@ -106,12 +106,12 @@ The TTS model files are not included in the repository because they are large.
 
 Download them automatically using:
 
-pip install huggingface_hub
+pip install huggingface\_hub
 
 python -c "
-from huggingface_hub import hf_hub_download
-hf_hub_download('hexgrad/Kokoro-82M', 'kokoro-v1.0.onnx', local_dir='.')
-hf_hub_download('hexgrad/Kokoro-82M', 'voices-v1.0.bin', local_dir='.')
+from huggingface\_hub import hf\_hub\_download
+hf\_hub\_download('hexgrad/Kokoro-82M', 'kokoro-v1.0.onnx', local\_dir='.')
+hf\_hub\_download('hexgrad/Kokoro-82M', 'voices-v1.0.bin', local\_dir='.')
 "
 
 This will download the required files into the project root.
@@ -130,10 +130,10 @@ pip install TTS
 
 Edit config.py:
 
-TTS_ENGINE = "xtts"
-XTTS_SPEAKER_WAV = "data/speaker.wav"
+TTS\_ENGINE = "xtts"
+XTTS\_SPEAKER\_WAV = "data/speaker.wav"
 
-Record a ~30 second clean voice sample and place it at:
+Record a \~30 second clean voice sample and place it at:
 
 data/speaker.wav
 ⏰ Timer Examples
@@ -171,8 +171,8 @@ The following files are ignored by Git:
 
 kokoro-v1.0.onnx
 voices-v1.0.bin
-buddy_env/
-__pycache__/
+buddy\_env/
+**pycache**/
 .cache/
 
 These are downloaded or generated locally.
@@ -191,7 +191,7 @@ No microphone input
 
 Check device list:
 
-python -c "import sounddevice as sd; print(sd.query_devices())"
+python -c "import sounddevice as sd; print(sd.query\_devices())"
 📜 License
 
 MIT License
@@ -214,4 +214,5 @@ Mem0
 
 Chroma
 
-Kokoro TTS**
+Kokoro TTS\*\*\*
+
