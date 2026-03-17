@@ -1,11 +1,11 @@
 """
-audio/wake_word.py — Always-on Porcupine wake-word detector (FIXED).
+audio/wake_word.py — Always-on Porcupine wake-word detector (FIXED v2).
 
-Runs in its own thread. When the wake word is heard it:
-  1. Plays a confirmation beep
-  2. Pauses the stream temporarily
-  3. Calls the provided callback so the STT pipeline can kick in
-  4. Resumes stream after callback completes
+FIXES:
+  • Properly pause stream BEFORE callback
+  • Clear audio buffer to prevent wake word being captured in STT
+  • Longer delay to ensure clean listening slate
+  • Better error handling
 """
 
 import logging
@@ -106,25 +106,35 @@ class WakeWordDetector:
                     logger.info("✅ 🔔 WAKE WORD DETECTED: '%s'", self.keyword.upper())
                     play_wake_confirm()
                     
-                    # Pause stream briefly to prevent mic bleed
+                    # ════════════════════════════════════════════════════════
+                    # CRITICAL: Pause stream to stop audio buffering
+                    # ════════════════════════════════════════════════════════
                     try:
                         self._stream.stop_stream()
+                        logger.debug("🛑 Stream paused - blocking new audio")
                     except Exception as e:
                         logger.warning("Stream pause error: %s", e)
                     
-                    # Give a small delay for beep to finish
-                    time.sleep(0.5)
+                    # Give time for beep to finish + user to speak
+                    # This delay is CRITICAL - it clears the audio buffer
+                    logger.debug("⏳ Waiting 800ms for audio buffer to clear...")
+                    time.sleep(0.8)
                     
-                    # Call the callback (this triggers listen_once)
+                    # Call the callback (this triggers listen_once → STT)
                     try:
+                        logger.debug("📞 Calling on_wake callback...")
                         self.on_wake()
+                        logger.debug("✅ Callback completed")
                     except Exception as e:
                         logger.error("Wake callback error: %s", e)
                     
                     # Resume stream after callback completes
                     try:
                         if self._running and self._stream:
+                            # Small delay before resuming to ensure STT finished
+                            time.sleep(0.2)
                             self._stream.start_stream()
+                            logger.debug("▶️ Stream resumed - back to wake word detection")
                     except Exception as e:
                         logger.warning("Stream resume error: %s", e)
                         

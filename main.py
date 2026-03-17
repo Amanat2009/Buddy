@@ -1,10 +1,16 @@
 """
-main.py — Buddy Orchestrator (FIXED).
+main.py — Buddy Orchestrator (FIXED - v2).
 
 Wires together every subsystem and runs the main event loop.
 
 State machine:
-  idle (waiting for wake word) → listening (recording question) → thinking (LLM processing) → speaking (TTS playing) → idle
+  idle → [wake word / UI button] → listening → [silence] → thinking → speaking → idle
+
+FIXES v2:
+  • No double beep after wake word (removed redundant play_listening_start)
+  • Markdown stripping before TTS
+  • Better streaming response handling
+  • Faster initial response
 """
 
 import logging
@@ -186,13 +192,13 @@ class Buddy:
         if self.llm.ping():
             threading.Thread(target=self.llm.warm_up, daemon=True).start()
         else:
-            logger.warning("Ollama not reachable at %s!", cfg.OLLAMA_HOST)
+            logger.warning("⚠️ Ollama not reachable at %s!", cfg.OLLAMA_HOST)
 
         logger.info("Starting wake-word detector…")
         if cfg.PICOVOICE_ACCESS_KEY != "YOUR_KEY_HERE":
             self.wake_detector.start()
         else:
-            logger.warning("No Picovoice access key set — wake word disabled. "
+            logger.warning("⚠️ No Picovoice access key set — wake word disabled. "
                            "Use UI buttons or text input.")
 
         if cfg.PROACTIVE_ENABLED:
@@ -219,11 +225,11 @@ class Buddy:
         self._abort_flag.clear()
         self._set_state("listening")
 
-        from audio.beep      import play_listening_start, play_processing, play_error
+        from audio.beep      import play_processing, play_error
         from audio.mic_input import MicRecorder
 
-        play_listening_start()
-        logger.info("🎙️  Recording… (waiting for silence)")
+        # NOTE: Wake word already beeped, don't double-beep
+        logger.info("🎙️ Recording… (waiting for silence)")
 
         wav_bytes = None
         try:
@@ -242,7 +248,7 @@ class Buddy:
             return
 
         if not wav_bytes or self._abort_flag.is_set():
-            logger.info("⏭️  Recording cancelled.")
+            logger.info("⏭️ Recording cancelled.")
             self._set_state("idle")
             return
 
@@ -254,7 +260,7 @@ class Buddy:
         logger.info("📝 STT result: %r", text)
 
         if not text.strip():
-            logger.warning("⚠️  No speech detected.")
+            logger.warning("⚠️ No speech detected.")
             self._set_state("idle")
             return
 
@@ -337,6 +343,7 @@ class Buddy:
                 self._set_state("speaking")
             
             # Feed to sentence streamer for real-time TTS
+            # The streamer will handle markdown stripping
             streamer.push(token)
 
         def on_done(response: str):
