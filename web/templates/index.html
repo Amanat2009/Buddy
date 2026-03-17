@@ -81,30 +81,58 @@
   }
 
   .status-dot {
-    width: 7px; height: 7px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: var(--green-dim);
     transition: background 0.3s, box-shadow 0.3s;
   }
-  .status-dot.idle    { background: var(--text-muted); box-shadow: none; }
-  .status-dot.listening { background: var(--green);
-    box-shadow: 0 0 8px var(--green), 0 0 20px var(--green-dim);
-    animation: pulse 1s ease-in-out infinite; }
-  .status-dot.thinking { background: var(--amber);
-    box-shadow: 0 0 8px var(--amber); animation: pulse 0.6s ease-in-out infinite; }
-  .status-dot.speaking { background: var(--blue);
-    box-shadow: 0 0 8px var(--blue); animation: pulse 0.8s ease-in-out infinite; }
+  .status-dot.idle    { 
+    background: #666;
+    box-shadow: none; 
+  }
+  .status-dot.listening { 
+    background: var(--green);
+    box-shadow: 0 0 10px var(--green), 0 0 20px var(--green-dim);
+    animation: pulse-fast 0.6s ease-in-out infinite; 
+  }
+  .status-dot.thinking { 
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber);
+    animation: pulse-slow 1s ease-in-out infinite; 
+  }
+  .status-dot.speaking { 
+    background: var(--blue);
+    box-shadow: 0 0 10px var(--blue);
+    animation: pulse-medium 0.8s ease-in-out infinite; 
+  }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  @keyframes pulse-fast {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.1); }
+  }
+  
+  @keyframes pulse-medium {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.08); }
+  }
+  
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.06); }
   }
 
   #state-label {
     text-transform: uppercase;
     letter-spacing: 0.15em;
     font-size: 10px;
-    min-width: 70px;
+    min-width: 80px;
+    font-weight: 600;
   }
+  
+  #state-label.idle { color: #888; }
+  #state-label.listening { color: var(--green); }
+  #state-label.thinking { color: var(--amber); }
+  #state-label.speaking { color: var(--blue); }
 
   /* ── Sidebar ──────────────────────────────────────────────────── */
   .sidebar {
@@ -246,6 +274,7 @@
     line-height: 1.6;
     font-weight: 300;
     position: relative;
+    word-wrap: break-word;
   }
 
   .msg.user .msg-bubble {
@@ -385,10 +414,10 @@
 
   <!-- ── Topbar ──────────────────────────────────────────────── -->
   <header class="topbar">
-    <div class="logo">BUDDY<span>/ local AI companion</span></div>
+    <div class="logo">BUDDY<span>/ local AI</span></div>
     <div class="topbar-status">
       <div class="status-dot idle" id="statusDot"></div>
-      <span id="state-label">IDLE</span>
+      <span id="state-label" class="idle">IDLE</span>
     </div>
   </header>
 
@@ -425,7 +454,7 @@
       <div class="msg buddy">
         <div class="msg-sender">BUDDY</div>
         <div class="msg-bubble">
-          Systems online. Say the wake word or use the text input below. What's good?
+          Systems online. Say the wake word or use the text input below.
         </div>
       </div>
     </div>
@@ -478,13 +507,29 @@ window.addEventListener('resize', resizeCanvas);
 let currentState      = 'idle';
 let streamingBubble   = null;
 let thinkingEl        = null;
-let timerIntervals    = {};  // id → interval
+let timerIntervals    = {};
 let activeTimers      = [];
 
 // ── Socket events ─────────────────────────────────────────────────────────
 
 socket.on('state_change', ({state}) => {
+  console.log(`📡 State changed: ${state}`);
   setUIState(state);
+});
+
+socket.on('user_transcription', ({text}) => {
+  console.log(`📝 User said: ${text}`);
+  addMessage('user', text);
+});
+
+socket.on('user_message', ({text}) => {
+  console.log(`👤 User message: ${text}`);
+  addMessage('user', text);
+});
+
+socket.on('assistant_message', ({text}) => {
+  console.log(`🤖 Assistant (full): ${text.substring(0, 80)}...`);
+  addMessage('buddy', text);
 });
 
 socket.on('token', ({text}) => {
@@ -497,7 +542,6 @@ socket.on('token', ({text}) => {
 
 socket.on('response_done', ({text}) => {
   if (streamingBubble) {
-    // Remove cursor
     const cursor = streamingBubble.querySelector('.cursor');
     if (cursor) cursor.remove();
     streamingBubble = null;
@@ -531,7 +575,14 @@ function setUIState(state) {
   const btnL  = document.getElementById('btnListen');
   const waveEl = document.getElementById('waveCanvas');
 
-  dot.className   = `status-dot ${state}`;
+  // Remove all state classes
+  dot.classList.remove('idle', 'listening', 'thinking', 'speaking');
+  label.classList.remove('idle', 'listening', 'thinking', 'speaking');
+  
+  // Add current state class
+  dot.classList.add(state);
+  label.classList.add(state);
+  
   label.textContent = state.toUpperCase();
 
   btnL.classList.toggle('active', state === 'listening');
@@ -709,10 +760,12 @@ function renderMemories(mems) {
 // ── Actions ───────────────────────────────────────────────────────────────
 
 function startListening() {
+  console.log('🎙️ Listening started');
   socket.emit('start_listening');
 }
 
 function stopBuddy() {
+  console.log('🛑 Stop requested');
   socket.emit('stop');
 }
 
@@ -721,6 +774,7 @@ function sendText() {
   const text  = input.value.trim();
   if (!text) return;
   input.value = '';
+  console.log(`📤 Sending: ${text}`);
   addMessage('user', text);
   socket.emit('text_input', { text });
 }

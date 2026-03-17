@@ -1,14 +1,15 @@
 """
-web/server.py — Real-time Web UI via Flask-SocketIO.
+web/server.py — Real-time Web UI via Flask-SocketIO (FIXED).
 
 Events emitted to client:
-  state_change   {state: "idle"|"listening"|"thinking"|"speaking"}
-  token          {text: str}          — streaming LLM token
-  response_done  {text: str}          — full response
-  mic_level      {level: float 0-1}
-  proactive      {text: str}          — buddy initiated message
-  timer_update   {timers: [...]}
-  memory_update  {memories: [...]}
+  state_change      {state: "idle"|"listening"|"thinking"|"speaking"}
+  user_transcription {text: str}          — what user said (STT result)
+  token             {text: str}           — streaming LLM token
+  response_done     {text: str}           — full response
+  mic_level         {level: float 0-1}
+  proactive         {text: str}           — buddy initiated message
+  timer_update      {timers: [...]}
+  memory_update     {memories: [...]}
 
 Events received from client:
   start_listening   — UI button pressed
@@ -86,30 +87,52 @@ def on_text_input(data):
 # ── Broadcast helpers (called by Buddy) ──────────────────────────────────────
 
 def broadcast_state(state: str):
+    """Broadcast state change: idle, listening, thinking, speaking."""
     socketio.emit("state_change", {"state": state})
 
 
+def broadcast_user_transcription(text: str):
+    """Broadcast the transcribed user message (what they said)."""
+    socketio.emit("user_transcription", {"text": text})
+
+
+def broadcast_user_message(text: str):
+    """Broadcast user message to chat (for non-voice messages)."""
+    socketio.emit("user_message", {"text": text})
+
+
+def broadcast_assistant_message(text: str):
+    """Broadcast full assistant message without streaming."""
+    socketio.emit("assistant_message", {"text": text})
+
+
 def broadcast_token(token: str):
+    """Broadcast streaming LLM token."""
     socketio.emit("token", {"text": token})
 
 
 def broadcast_response(text: str):
+    """Broadcast that streaming response is done."""
     socketio.emit("response_done", {"text": text})
 
 
 def broadcast_level(level: float):
+    """Broadcast microphone level for visualization."""
     socketio.emit("mic_level", {"level": round(level, 3)})
 
 
 def broadcast_proactive(text: str):
+    """Broadcast proactive message from Buddy."""
     socketio.emit("proactive", {"text": text})
 
 
 def broadcast_timers(timers: list):
+    """Broadcast active timers."""
     socketio.emit("timer_update", {"timers": timers})
 
 
 def broadcast_memories(memories: list):
+    """Broadcast memory list."""
     socketio.emit("memory_update", {"memories": memories})
 
 

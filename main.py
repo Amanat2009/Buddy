@@ -1,10 +1,10 @@
 """
-main.py — Buddy Orchestrator.
+main.py — Buddy Orchestrator (FIXED).
 
 Wires together every subsystem and runs the main event loop.
 
 State machine:
-  idle → [wake word / UI button] → listening → [silence] → thinking → speaking → idle
+  idle (waiting for wake word) → listening (recording question) → thinking (LLM processing) → speaking (TTS playing) → idle
 """
 
 import logging
@@ -30,6 +30,7 @@ class Buddy:
     def __init__(self):
         self._state      = "idle"
         self._abort_flag = threading.Event()
+        self._state_lock = threading.Lock()
 
         # ── Instantiate subsystems ─────────────────────────────────────────
         from audio.beep import play_wake_confirm, play_listening_start, \
@@ -156,9 +157,12 @@ class Buddy:
         return self._state
 
     def _set_state(self, state: str):
-        self._state = state
-        self._web.broadcast_state(state)
-        logger.info("State → %s", state)
+        """Thread-safe state setter with logging."""
+        with self._state_lock:
+            if self._state != state:
+                self._state = state
+                self._web.broadcast_state(state)
+                logger.info("🔄 State → %s", state.upper())
 
     # ── Startup ───────────────────────────────────────────────────────────────
 
@@ -196,6 +200,7 @@ class Buddy:
             self.proactive.start()
 
         logger.info("═══ Buddy ready ═══")
+        self._set_state("idle")
 
     def shutdown(self):
         self.wake_detector.stop()
@@ -208,7 +213,7 @@ class Buddy:
     def listen_once(self):
         """Record one utterance, transcribe, generate, speak."""
         if self._state != "idle":
-            logger.debug("Busy (state=%s), ignoring listen request.", self._state)
+            logger.debug("🚫 Busy (state=%s), ignoring listen request.", self._state)
             return
 
         self._abort_flag.clear()
@@ -218,6 +223,7 @@ class Buddy:
         from audio.mic_input import MicRecorder
 
         play_listening_start()
+        logger.info("🎙️  Recording… (waiting for silence)")
 
         wav_bytes = None
         try:
@@ -230,25 +236,30 @@ class Buddy:
             ) as mic:
                 wav_bytes = mic.record()
         except Exception as e:
-            logger.error("Mic error: %s", e)
-            from audio.beep import play_error
+            logger.error("❌ Mic error: %s", e)
             play_error()
             self._set_state("idle")
             return
 
         if not wav_bytes or self._abort_flag.is_set():
+            logger.info("⏭️  Recording cancelled.")
             self._set_state("idle")
             return
 
+        logger.info("✅ Recording complete. Transcribing…")
         self._set_state("thinking")
         play_processing()
 
         text = self.stt.transcribe(wav_bytes)
-        logger.info("STT: %r", text)
+        logger.info("📝 STT result: %r", text)
 
         if not text.strip():
+            logger.warning("⚠️  No speech detected.")
             self._set_state("idle")
             return
+
+        # ✅ DISPLAY TRANSCRIBED TEXT TO USER
+        self._web.broadcast_user_transcription(text)
 
         self.handle_text(text, from_voice=True)
 
@@ -260,9 +271,12 @@ class Buddy:
 
         self._abort_flag.clear()
 
-        # Update UI with user message (already shown if typed)
+        # Update state if text came from UI
         if not from_voice:
             self._set_state("thinking")
+        else:
+            # Already in thinking from listen_once
+            pass
 
         # ── Timer intent check ─────────────────────────────────────────────
         duration = self._parse_timer(text)
@@ -277,13 +291,16 @@ class Buddy:
             ack = f"Set a {duration_str} {label.lower()} timer. I'll let you know when it's done."
             self.history.add_user(text)
             self.history.add_assistant(ack)
+            # ✅ DISPLAY BOTH USER AND ASSISTANT RESPONSE
+            self._web.broadcast_user_message(text)
+            self._web.broadcast_assistant_message(ack)
             self._speak_response(ack)
             self._broadcast_timers()
             return
 
         # ── Mood + personality processing ─────────────────────────────────
         mood_info = self.personality.process_user_message(text)
-        logger.debug("Mood: %s (score=%.2f)", mood_info["label"], mood_info["score"])
+        logger.debug("😊 Mood: %s (score=%.2f)", mood_info["label"], mood_info["score"])
 
         # ── Memory search ─────────────────────────────────────────────────
         memories = self.mem.search(text, limit=8)
@@ -305,17 +322,22 @@ class Buddy:
 
         self._set_state("thinking")
         full_response = ""
+        response_started = False
 
         def on_token(token: str):
-            nonlocal full_response
+            nonlocal full_response, response_started
             if self._abort_flag.is_set():
                 return
             full_response += token
             self._web.broadcast_token(token)
+            
+            # Transition to speaking when first token arrives
+            if not response_started:
+                response_started = True
+                self._set_state("speaking")
+            
             # Feed to sentence streamer for real-time TTS
             streamer.push(token)
-            if self._state == "thinking":
-                self._set_state("speaking")
 
         def on_done(response: str):
             streamer.finish()
@@ -354,7 +376,7 @@ class Buddy:
 
     def abort(self):
         """Interrupt whatever Buddy is doing right now."""
-        logger.info("Abort requested.")
+        logger.info("🛑 Abort requested.")
         self._abort_flag.set()
         self.tts.stop()
         self._set_state("idle")
@@ -392,11 +414,11 @@ if __name__ == "__main__":
     )
     web_thread.start()
 
-    logger.info("Open your browser at http://%s:%d", cfg.WEB_HOST, cfg.WEB_PORT)
+    logger.info("🌐 Open your browser at http://%s:%d", cfg.WEB_HOST, cfg.WEB_PORT)
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        logger.info("Shutting down…")
+        logger.info("🛑 Shutting down…")
         buddy.shutdown()
