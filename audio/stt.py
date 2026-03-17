@@ -42,7 +42,7 @@ class WhisperSTT:
                     raw = wf.readframes(wf.getnframes())
                 pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
                 lang = self.language.split(".")[0]
-                segments, _ = self._engine.transcribe(pcm, language=lang, beam_size=5, vad_filter=True)
+                segments, _ = self._engine.transcribe(pcm, language=lang, beam_size=5, vad_filter=False)
                 return " ".join(s.text.strip() for s in segments).strip()
             except Exception as e:
                 logger.error("Transcription error: %s", e)
