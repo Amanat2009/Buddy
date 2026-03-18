@@ -1,12 +1,14 @@
 {
   "goals": [
-    "how to make a sausage",
-    "explain what a porcupine is",
     "learn about porcupines",
-    "information about porcupine"
+    "information about porcupine",
+    "learn how to make sausage",
+    "explain what a porcupine is",
+    "how to make a sausage"
   ],
   "open_loops": [
-    "need to clarify if the user wants info on the animal or another reference"
+    "need to clarify if the user wants info on the animal or another reference",
+    "continue explaining how to make sausage"
   ],
   "people": {},
   "life_phase": ""

@@ -9,20 +9,64 @@ import logging
 import queue
 import re
 import threading
+import unicodedata
 
 import numpy as np
 from audio.device import play_array, stop_playback
 
 logger = logging.getLogger("buddy.tts")
 
-SENTENCE_END_RE = re.compile(
-    r"(?<=[.!?])\s+(?=[A-Z\"\'\""])|(?<=[.!?])$"
-)
+
+# ── Markdown stripper ─────────────────────────────────────────────────────────
+
+_MD_STRIP = [
+    (re.compile(r'\*\*(.+?)\*\*'),   r'\1'),
+    (re.compile(r'\*(.+?)\*'),        r'\1'),
+    (re.compile(r'__(.+?)__'),        r'\1'),
+    (re.compile(r'_(.+?)_'),          r'\1'),
+    (re.compile(r'`+(.+?)`+'),        r'\1'),
+    (re.compile(r'#+\s*'),            r''),
+    (re.compile(r'^\s*[-*•]\s+', re.MULTILINE), r''),
+    (re.compile(r'^\s*\d+\.\s+', re.MULTILINE), r''),
+    (re.compile(r'\[(.+?)\]\(.+?\)'), r'\1'),
+    (re.compile(r'[~^|]'),            r''),
+    (re.compile(r'—'),                r', '),
+    (re.compile(r'–'),                r', '),
+    (re.compile(r'\s{2,}'),           r' '),
+]
 
 
-def split_sentences(text):
-    parts = SENTENCE_END_RE.split(text.strip())
-    return [p.strip() for p in parts if p.strip()]
+def clean_for_tts(text: str) -> str:
+    """Strip markdown and special characters before sending to Kokoro."""
+    for pattern, replacement in _MD_STRIP:
+        text = pattern.sub(replacement, text)
+    text = unicodedata.normalize("NFKC", text)
+    return text.strip()
+
+
+# ── Sentence splitter ─────────────────────────────────────────────────────────
+
+_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
+_MIN_CHUNK = 60
+
+
+def split_sentences(text: str) -> list[str]:
+    """
+    Split text into speakable chunks.
+    Merges short fragments together so Kokoro always gets a
+    meaningful amount of text.
+    """
+    raw = [p.strip() for p in _SPLIT_RE.split(text.strip()) if p.strip()]
+    chunks = []
+    buf = ""
+    for part in raw:
+        buf = (buf + " " + part).strip() if buf else part
+        if len(buf) >= _MIN_CHUNK:
+            chunks.append(buf)
+            buf = ""
+    if buf:
+        chunks.append(buf)
+    return chunks
 
 
 class TTSEngine:
@@ -94,6 +138,9 @@ class TTSEngine:
         if not text.strip():
             return
         try:
+            text = clean_for_tts(text)   # ✅ added cleaning
+            if not text:
+                return
             audio, sr = self.synthesise(text)
             self._playing.set()
             try:

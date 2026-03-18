@@ -42,7 +42,7 @@ OLLAMA_OPTIONS    = {
     "top_p":          0.92,
     "repeat_penalty": 1.15,
     "num_ctx":        4096,
-    "num_predict":    512,
+    "num_predict":    3072,
 }
 
 TTS_ENGINE   = "kokoro"
