@@ -1,10 +1,3 @@
-"""
-audio/tts.py — TTS engine (Kokoro via onnxruntime-directml or XTTS-v2).
-
-onnxruntime-directml automatically uses AMD GPU via DirectML.
-All playback goes through audio.device so beeps and TTS never overlap.
-"""
-
 import logging
 import queue
 import re
@@ -37,7 +30,6 @@ _MD_STRIP = [
 
 
 def clean_for_tts(text: str) -> str:
-    """Strip markdown and special characters before sending to Kokoro."""
     for pattern, replacement in _MD_STRIP:
         text = pattern.sub(replacement, text)
     text = unicodedata.normalize("NFKC", text)
@@ -47,106 +39,70 @@ def clean_for_tts(text: str) -> str:
 # ── Sentence splitter ─────────────────────────────────────────────────────────
 
 _SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
-_MIN_CHUNK = 30
+_MIN_CHUNK = 40   # 🔥 reduced from 60 → faster response
 
 
 def split_sentences(text: str) -> list[str]:
-    """
-    Split text into speakable chunks.
-    Merges short fragments together so Kokoro always gets a
-    meaningful amount of text.
-    """
     raw = [p.strip() for p in _SPLIT_RE.split(text.strip()) if p.strip()]
     chunks = []
     buf = ""
+
     for part in raw:
         buf = (buf + " " + part).strip() if buf else part
         if len(buf) >= _MIN_CHUNK:
             chunks.append(buf)
             buf = ""
+
     if buf:
         chunks.append(buf)
+
     return chunks
 
 
 class TTSEngine:
 
-    def __init__(self, engine="kokoro", voice="af_heart", speed=2,
-                 lang="en-us", xtts_model="tts_models/multilingual/multi-dataset/xtts_v2",
-                 xtts_speaker_wav="", xtts_language="en", use_gpu=True):
-        self.engine           = engine
-        self.voice            = voice
-        self.speed            = speed
-        self.lang             = lang
-        self.xtts_model       = xtts_model
-        self.xtts_speaker_wav = xtts_speaker_wav
-        self.xtts_language    = xtts_language
-        self.use_gpu          = use_gpu
-        self._kokoro  = None
-        self._xtts    = None
-        self._lock    = threading.Lock()
+    def __init__(self, engine="kokoro", voice="af_heart", speed=1.3,
+                 lang="en-us"):
+        self.engine = engine
+        self.voice = voice
+        self.speed = speed
+        self.lang = lang
+
+        self._kokoro = None
+        self._lock = threading.Lock()
         self._playing = threading.Event()
 
     def load(self):
-        if self.engine == "kokoro":
-            self._load_kokoro()
-        elif self.engine == "xtts":
-            self._load_xtts()
-        else:
-            raise ValueError(f"Unknown TTS engine: {self.engine!r}")
-
-    def _load_kokoro(self):
-        try:
-            from kokoro_onnx import Kokoro
-            try:
-                import onnxruntime as ort
-                available = ort.get_available_providers()
-                if "DmlExecutionProvider" in available:
-                    logger.info("DirectML provider available — Kokoro will use AMD GPU.")
-                else:
-                    logger.warning("DmlExecutionProvider not found in %s — Kokoro on CPU.", available)
-            except Exception:
-                pass
-            self._kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
-            logger.info("Kokoro TTS loaded.")
-        except FileNotFoundError:
-            logger.error(
-                "kokoro-v1.0.onnx / voices-v1.0.bin not found in project root.\n"
-                "Run: python -c \"from huggingface_hub import hf_hub_download; "
-                "hf_hub_download('hexgrad/Kokoro-82M','kokoro-v1.0.onnx',local_dir='.')\""
-            )
-            raise
-        except Exception as e:
-            logger.error("Failed to load Kokoro: %s", e)
-            raise
-
-    def _load_xtts(self):
-        from TTS.api import TTS
-        self._xtts = TTS(self.xtts_model, gpu=self.use_gpu)
-        logger.info("XTTS-v2 loaded.")
+        from kokoro_onnx import Kokoro
+        self._kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+        logger.info("Kokoro TTS loaded.")
 
     def synthesise(self, text):
         with self._lock:
-            if self.engine == "kokoro":
-                samples, sr = self._kokoro.create(text, voice=self.voice, speed=self.speed, lang=self.lang)
-                return samples.astype(np.float32), sr
-            else:
-                wav = self._xtts.tts(text=text, speaker_wav=self.xtts_speaker_wav or None, language=self.xtts_language)
-                return np.array(wav, dtype=np.float32), 24_000
+            samples, sr = self._kokoro.create(
+                text,
+                voice=self.voice,
+                speed=self.speed,
+                lang=self.lang
+            )
+            return samples.astype(np.float32), sr
 
     def speak(self, text):
         if not text.strip():
             return
         try:
-            text = clean_for_tts(text)   # ✅ added cleaning
+            text = clean_for_tts(text)
             if not text:
                 return
+
             audio, sr = self.synthesise(text)
+
             self._playing.set()
             try:
-                play_array(audio, sr, blocking=False)
+                play_array(audio, sr, blocking=True)  # ✅ KEEP TRUE (no skipping)
             finally:
                 self._playing.clear()
+
         except Exception as e:
             logger.error("TTS speak error: %s", e)
 
@@ -163,14 +119,16 @@ class TTSEngine:
         return self._playing.is_set()
 
 
+# ── STREAMER (FIXED) ─────────────────────────────────────────────────────────
+
 class SentenceStreamer:
 
     def __init__(self, tts: TTSEngine):
-        self.tts     = tts
+        self.tts = tts
         self._buffer = ""
-        self._q      = queue.Queue()
+        self._q = queue.Queue()
         self._thread = None
-        self._done   = threading.Event()
+        self._done = threading.Event()
 
     def start(self):
         self._done.clear()
@@ -181,11 +139,19 @@ class SentenceStreamer:
     def push(self, token):
         self._buffer += token
         sentences = split_sentences(self._buffer)
-        if len(sentences) > 1:
-            for sent in sentences[:-1]:
-                if sent:
-                    self._q.put(sent)
-            self._buffer = sentences[-1]
+
+        # ✅ Speak completed sentences
+        for sent in sentences[:-1]:
+            if sent.strip():
+                self._q.put(sent)
+
+        # keep last unfinished
+        self._buffer = sentences[-1] if sentences else ""
+
+        # 🔥 NEW: speak immediately if sentence ends
+        if self._buffer.strip().endswith(('.', '!', '?')):
+            self._q.put(self._buffer.strip())
+            self._buffer = ""
 
     def finish(self):
         if self._buffer.strip():

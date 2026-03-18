@@ -34,7 +34,7 @@ WHISPER_THREADS    = 4
 WHISPER_USE_VULKAN = False   # N/A for faster-whisper
 
 OLLAMA_HOST       = "http://localhost:11434"
-OLLAMA_MODEL      = "huihui_ai/qwen3-abliterated:4b"
+OLLAMA_MODEL      = "huihui_ai/gemma3-abliterated:1b-fp16"
 OLLAMA_KEEP_ALIVE = "30m"
 OLLAMA_STREAM     = True
 OLLAMA_OPTIONS    = {
