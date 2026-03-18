@@ -1,15 +1,24 @@
 {
   "goals": [
-    "learn about porcupines",
-    "information about porcupine",
-    "learn how to make sausage",
     "explain what a porcupine is",
-    "how to make a sausage"
+    "how to make a sausage",
+    "What is my name?",
+    "information about porcupine",
+    "learn about porcupines",
+    "to confirm name",
+    "learn how to make sausage"
   ],
   "open_loops": [
     "need to clarify if the user wants info on the animal or another reference",
-    "continue explaining how to make sausage"
+    "continue explaining how to make sausage",
+    "You' walk up and ask for your name!"
   ],
-  "people": {},
-  "life_phase": ""
+  "people": {
+    "name": "relationship/description",
+    "description": "helpful AI",
+    "role": "assistant",
+    "user": "relationship/description",
+    "assistant": "relationship/description"
+  },
+  "life_phase": "optional free-text description"
 }
