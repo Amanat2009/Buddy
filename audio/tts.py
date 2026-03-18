@@ -47,7 +47,7 @@ def clean_for_tts(text: str) -> str:
 # ── Sentence splitter ─────────────────────────────────────────────────────────
 
 _SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
-_MIN_CHUNK = 60
+_MIN_CHUNK = 30
 
 
 def split_sentences(text: str) -> list[str]:
@@ -71,7 +71,7 @@ def split_sentences(text: str) -> list[str]:
 
 class TTSEngine:
 
-    def __init__(self, engine="kokoro", voice="af_heart", speed=1.1,
+    def __init__(self, engine="kokoro", voice="af_heart", speed=2,
                  lang="en-us", xtts_model="tts_models/multilingual/multi-dataset/xtts_v2",
                  xtts_speaker_wav="", xtts_language="en", use_gpu=True):
         self.engine           = engine
@@ -144,7 +144,7 @@ class TTSEngine:
             audio, sr = self.synthesise(text)
             self._playing.set()
             try:
-                play_array(audio, sr, blocking=True)
+                play_array(audio, sr, blocking=False)
             finally:
                 self._playing.clear()
         except Exception as e:
