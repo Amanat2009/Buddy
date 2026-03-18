@@ -1,0 +1,61 @@
+[21:14:40] [INFO] buddy.main — 
+==================================================
+[21:14:40] [INFO] buddy.main — BUDDY STARTUP
+[21:14:40] [INFO] buddy.main — ==================================================
+
+[21:14:40] [INFO] buddy.main — Setting up STT...
+[21:14:40] [INFO] buddy.main — Setting up TTS...
+[21:14:40] [INFO] buddy.main — Setting up LLM...
+[21:14:40] [INFO] buddy.main — Setting up Memory...
+[21:14:40] [INFO] buddy.main — Setting up Sentiment...
+[21:14:40] [INFO] buddy.main — Setting up System Prompt...
+[21:14:40] [INFO] buddy.main — Setting up Personality...
+[21:14:40] [INFO] buddy.main — Setting up Wake Word Detector...
+[21:14:40] [INFO] buddy.main — Setting up Proactive Scheduler...
+[21:14:42] [INFO] buddy.stt — Loading faster-whisper model 'small.en'...
+[21:14:42] [DEBUG] httpcore.connection — connect_tcp.started host='huggingface.co' port=443 local_address=None timeout=None socket_options=None
+[21:14:42] [DEBUG] httpcore.connection — connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001EB53597090>
+[21:14:42] [DEBUG] httpcore.connection — start_tls.started ssl_context=<ssl.SSLContext object at 0x000001EB54D14F80> server_hostname='huggingface.co' timeout=None
+[21:14:42] [DEBUG] httpcore.connection — start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001EB54F75E90>
+[21:14:42] [DEBUG] httpcore.http11 — send_request_headers.started request=<Request [b'GET']>
+[21:14:42] [DEBUG] httpcore.http11 — send_request_headers.complete
+[21:14:42] [DEBUG] httpcore.http11 — send_request_body.started request=<Request [b'GET']>
+[21:14:42] [DEBUG] httpcore.http11 — send_request_body.complete
+[21:14:42] [DEBUG] httpcore.http11 — receive_response_headers.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=utf-8'), (b'Content-Length', b'982'), (b'Connection', b'keep-alive'), (b'Date', b'Tue, 17 Mar 2026 15:44:44 GMT'), (b'ETag', b'W/"3d6-1sMZ9z8uRo74G6oKMdNPVcBgCmo"'), (b'X-Powered-By', b'huggingface-moon'), (b'X-Request-Id', b'Root=1-69b976ec-19d031582c74ea3b52233f79;d4dba703-93d4-42b9-8c25-938390963aa9'), (b'RateLimit', b'"api";r=997;t=33'), (b'RateLimit-Policy', b'"fixed window";"api";q=1000;w=300'), (b'cross-origin-opener-policy', b'same-origin'), (b'Referrer-Policy', b'strict-origin-when-cross-origin'), (b'Access-Control-Max-Age', b'86400'), (b'Access-Control-Allow-Origin', b'https://huggingface.co'), (b'Vary', b'Origin'), (b'Access-Control-Expose-Headers', b'X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash'), (b'X-Cache', b'Miss from cloudfront'), (b'Via', b'1.1 1b893d289944e46379df722f37952b6c.cloudfront.net (CloudFront)'), (b'X-Amz-Cf-Pop', b'CCU50-P6'), (b'X-Amz-Cf-Id', b'3p4HBnO2-BOAxlhmoT5a5WiVv1jSYy6IghHGJfxof5OhUzAalwtjEA==')])
+[21:14:43] [INFO] httpx — HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-small.en/revision/main "HTTP/1.1 200 OK"
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_body.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_body.complete
+[21:14:43] [DEBUG] httpcore.http11 — response_closed.started
+[21:14:43] [DEBUG] httpcore.http11 — response_closed.complete
+[21:14:43] [DEBUG] httpcore.http11 — send_request_headers.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — send_request_headers.complete
+[21:14:43] [DEBUG] httpcore.http11 — send_request_body.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — send_request_body.complete
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_headers.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Content-Type', b'application/json; charset=utf-8'), (b'Content-Length', b'982'), (b'Connection', b'keep-alive'), (b'Date', b'Tue, 17 Mar 2026 15:44:44 GMT'), (b'ETag', b'W/"3d6-1sMZ9z8uRo74G6oKMdNPVcBgCmo"'), (b'X-Powered-By', b'huggingface-moon'), (b'X-Request-Id', b'Root=1-69b976ec-57a7739839013e4d6065fcdc;c2f014d0-992a-49fa-91da-63f3ffdea2d9'), (b'RateLimit', b'"api";r=996;t=33'), (b'RateLimit-Policy', b'"fixed window";"api";q=1000;w=300'), (b'cross-origin-opener-policy', b'same-origin'), (b'Referrer-Policy', b'strict-origin-when-cross-origin'), (b'Access-Control-Max-Age', b'86400'), (b'Access-Control-Allow-Origin', b'https://huggingface.co'), (b'Vary', b'Origin'), (b'Access-Control-Expose-Headers', b'X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash'), (b'X-Cache', b'Miss from cloudfront'), (b'Via', b'1.1 1b893d289944e46379df722f37952b6c.cloudfront.net (CloudFront)'), (b'X-Amz-Cf-Pop', b'CCU50-P6'), (b'X-Amz-Cf-Id', b'UkO-mfeaCh2QEF6RH6SNIGSxDXHYNr1OoCHGu-QkgHIXJbgQ7NJhgQ==')])
+[21:14:43] [INFO] httpx — HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-small.en/revision/main "HTTP/1.1 200 OK"
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_body.started request=<Request [b'GET']>
+[21:14:43] [DEBUG] httpcore.http11 — receive_response_body.complete
+[21:14:43] [DEBUG] httpcore.http11 — response_closed.started
+[21:14:43] [DEBUG] httpcore.http11 — response_closed.complete
+[21:14:44] [INFO] buddy.stt — faster-whisper loaded on CPU.
+[21:14:46] [WARNING] buddy.memory — mem0ai not installed — memory disabled.
+[21:14:46] [INFO] buddy.sentiment — VADER sentiment analyser loaded.
+[21:14:48] [INFO] buddy.llm — Warming up model 'qwen-nothink'…
+[21:14:48] [INFO] buddy.llm — Model warm-up complete.
+[21:14:48] [INFO] buddy.proactive — Proactive scheduler started.
+[21:14:48] [INFO] buddy.web — Web UI at http://127.0.0.1:7860
+[21:15:04] [DEBUG] buddy.web — UI client connected.
+[21:15:06] [DEBUG] buddy.mic — Listening…
+[21:15:07] [DEBUG] buddy.mic — Speech started.
+[21:15:12] [DEBUG] buddy.mic — Silence end-point detected.
+[21:15:12] [INFO] faster_whisper — Processing audio with duration 00:06.540
+[21:15:12] [DEBUG] faster_whisper — Processing segment at 00:00.000
+[21:15:14] [ERROR] buddy.llm — Ollama error: 404 Client Error: Not Found for url: http://localhost:11434/api/chat
+[21:15:16] [ERROR] buddy.llm — Ollama error: 404 Client Error: Not Found for url: http://localhost:11434/api/chat
+[21:15:16] [DEBUG] buddy.personality — Context extraction parse error: Expecting value: line 1 column 1 (char 0)
+[21:15:49] [DEBUG] buddy.web — UI client disconnected.
+[21:15:51] [DEBUG] buddy.web — UI client connected.
+[21:29:48] [DEBUG] schedule — Running job Job(interval=15, unit=minutes, do=_event_check, args=(), kwargs={})
+[21:34:09] [DEBUG] buddy.web — UI client disconnected.

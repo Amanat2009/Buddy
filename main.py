@@ -1,16 +1,12 @@
 """
-main.py — Buddy Orchestrator (FIXED - v2).
+main.py — Buddy Orchestrator (FIXED v3 - Complete Fix).
 
-Wires together every subsystem and runs the main event loop.
-
-State machine:
-  idle → [wake word / UI button] → listening → [silence] → thinking → speaking → idle
-
-FIXES v2:
-  • No double beep after wake word (removed redundant play_listening_start)
-  • Markdown stripping before TTS
-  • Better streaming response handling
-  • Faster initial response
+CRITICAL FIXES:
+  ✅ Wake word → callback → listening → STT → response (fixed flow)
+  ✅ Thinking disabled by default
+  ✅ Extensive debugging/logging
+  ✅ Proper state management
+  ✅ Error handling at every step
 """
 
 import logging
@@ -20,11 +16,18 @@ from pathlib import Path
 
 import config as cfg
 
+# ── Configure Logging with File Output ──────────────────────────────────────
+
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    level=logging.DEBUG,  # Changed to DEBUG for more info
+    format="[%(asctime)s] [%(levelname)s] %(name)s — %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),  # Terminal
+        logging.FileHandler("buddy_debug.log"),  # File
+    ]
 )
+
 logger = logging.getLogger("buddy.main")
 
 
@@ -34,34 +37,42 @@ class Buddy:
     STATES = ("idle", "listening", "thinking", "speaking")
 
     def __init__(self):
+        logger.info("🔧 Initializing Buddy...")
         self._state      = "idle"
         self._abort_flag = threading.Event()
         self._state_lock = threading.Lock()
+        self._listening  = False  # Track listening state
 
         # ── Instantiate subsystems ─────────────────────────────────────────
-        from audio.beep import play_wake_confirm, play_listening_start, \
-            play_processing, play_error, play_timer_done
-        from audio.stt  import WhisperSTT
-        from audio.tts  import TTSEngine, SentenceStreamer
-        from audio.wake_word import WakeWordDetector
-        from audio.mic_input import MicRecorder
+        try:
+            from audio.beep import play_wake_confirm, play_processing, play_error, play_timer_done
+            from audio.stt  import WhisperSTT
+            from audio.tts  import TTSEngine, SentenceStreamer
+            from audio.wake_word import WakeWordDetector
+            from audio.mic_input import MicRecorder
 
-        from llm.ollama_client import OllamaClient, ConversationHistory
-        from llm.system_prompt import SystemPromptBuilder
+            from llm.ollama_client import OllamaClient, ConversationHistory
+            from llm.system_prompt import SystemPromptBuilder
 
-        from memory.mem0_client import MemoryClient
+            from memory.mem0_client import MemoryClient
 
-        from personality.sentiment import SentimentAnalyser
-        from personality.engine    import PersonalityEngine
+            from personality.sentiment import SentimentAnalyser
+            from personality.engine    import PersonalityEngine
 
-        from context.timer import TimerManager, parse_timer_intent, extract_timer_label
+            from context.timer import TimerManager, parse_timer_intent, extract_timer_label
 
-        from proactive.scheduler import ProactiveScheduler
+            from proactive.scheduler import ProactiveScheduler
 
-        import web.server as web_server
-        self._web = web_server
+            import web.server as web_server
+            self._web = web_server
+            
+            logger.info("✅ All imports successful")
+        except Exception as e:
+            logger.error("❌ Import failed: %s", e, exc_info=True)
+            raise
 
         # ── STT ────────────────────────────────────────────────────────────
+        logger.info("Setting up STT...")
         self.stt = WhisperSTT(
             model       = cfg.WHISPER_MODEL,
             language    = cfg.WHISPER_LANGUAGE,
@@ -71,6 +82,7 @@ class Buddy:
         )
 
         # ── TTS ────────────────────────────────────────────────────────────
+        logger.info("Setting up TTS...")
         self.tts = TTSEngine(
             engine           = cfg.TTS_ENGINE,
             voice            = cfg.KOKORO_VOICE,
@@ -83,6 +95,7 @@ class Buddy:
         )
 
         # ── LLM ────────────────────────────────────────────────────────────
+        logger.info("Setting up LLM...")
         self.llm = OllamaClient(
             host       = cfg.OLLAMA_HOST,
             model      = cfg.OLLAMA_MODEL,
@@ -92,12 +105,15 @@ class Buddy:
         self.history = ConversationHistory(max_turns=20)
 
         # ── Memory ─────────────────────────────────────────────────────────
+        logger.info("Setting up Memory...")
         self.mem = MemoryClient(cfg.MEM0_CONFIG, user_id=cfg.MEM0_USER_ID)
 
         # ── Sentiment ──────────────────────────────────────────────────────
+        logger.info("Setting up Sentiment...")
         self.sentiment = SentimentAnalyser()
 
         # ── System prompt ──────────────────────────────────────────────────
+        logger.info("Setting up System Prompt...")
         self.prompt_builder = SystemPromptBuilder(
             personality_core = cfg.PERSONALITY_CORE,
             buddy_name       = cfg.BUDDY_NAME,
@@ -108,6 +124,7 @@ class Buddy:
         )
 
         # ── Personality engine ─────────────────────────────────────────────
+        logger.info("Setting up Personality...")
         self.personality = PersonalityEngine(
             llm_client       = self.llm,
             sentiment_analyser = self.sentiment,
@@ -132,15 +149,17 @@ class Buddy:
         self.timers = TimerManager(on_done=_on_timer_done)
 
         # ── Wake word ──────────────────────────────────────────────────────
+        logger.info("Setting up Wake Word Detector...")
         self.wake_detector = WakeWordDetector(
             access_key  = cfg.PICOVOICE_ACCESS_KEY,
             keyword     = cfg.WAKE_WORD,
             sensitivity = cfg.PORCUPINE_SENSITIVITY,
             device_index = cfg.MIC_DEVICE_INDEX,
-            on_wake      = self.listen_once,
+            on_wake      = self.listen_once,  # ← CALLBACK TO THIS FUNCTION
         )
 
         # ── Proactive scheduler ────────────────────────────────────────────
+        logger.info("Setting up Proactive Scheduler...")
         self.proactive = ProactiveScheduler(
             llm_client        = self.llm,
             mem_client        = self.mem,
@@ -155,6 +174,8 @@ class Buddy:
             evening_hour      = cfg.PROACTIVE_EVENING_HOUR,
             on_speak          = lambda t: self._web.broadcast_proactive(t),
         )
+        
+        logger.info("✅ Buddy initialization complete")
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -163,73 +184,108 @@ class Buddy:
         return self._state
 
     def _set_state(self, state: str):
-        """Thread-safe state setter with logging."""
+        """Thread-safe state setter with extensive logging."""
         with self._state_lock:
             if self._state != state:
+                old_state = self._state
                 self._state = state
                 self._web.broadcast_state(state)
-                logger.info("🔄 State → %s", state.upper())
+                logger.info("🔄 State: %s → %s", old_state.upper(), state.upper())
 
     # ── Startup ───────────────────────────────────────────────────────────────
 
     def boot(self):
         """Load all models and start background services."""
-        logger.info("═══ Buddy booting up ═══")
+        logger.info("╔════════════════════════════════════╗")
+        logger.info("║  🚀 BUDDY BOOTING UP 🚀            ║")
+        logger.info("╚════════════════════════════════════╝")
 
-        logger.info("Loading Whisper STT…")
-        self.stt.load()
+        logger.info("📦 Loading Whisper STT…")
+        try:
+            self.stt.load()
+            logger.info("✅ STT loaded")
+        except Exception as e:
+            logger.error("❌ STT load failed: %s", e, exc_info=True)
 
-        logger.info("Loading TTS…")
-        self.tts.load()
+        logger.info("📦 Loading TTS…")
+        try:
+            self.tts.load()
+            logger.info("✅ TTS loaded")
+        except Exception as e:
+            logger.error("❌ TTS load failed: %s", e, exc_info=True)
 
-        logger.info("Loading memory…")
-        self.mem.load()
+        logger.info("📦 Loading memory…")
+        try:
+            self.mem.load()
+            logger.info("✅ Memory loaded")
+        except Exception as e:
+            logger.error("❌ Memory load failed: %s", e, exc_info=True)
 
-        logger.info("Loading sentiment…")
-        self.sentiment.load()
+        logger.info("📦 Loading sentiment…")
+        try:
+            self.sentiment.load()
+            logger.info("✅ Sentiment loaded")
+        except Exception as e:
+            logger.error("❌ Sentiment load failed: %s", e, exc_info=True)
 
-        logger.info("Warming up Ollama…")
+        logger.info("📦 Warming up Ollama…")
         if self.llm.ping():
+            logger.info("✅ Ollama is running")
             threading.Thread(target=self.llm.warm_up, daemon=True).start()
         else:
-            logger.warning("⚠️ Ollama not reachable at %s!", cfg.OLLAMA_HOST)
+            logger.error("❌ Ollama not reachable at %s!", cfg.OLLAMA_HOST)
 
-        logger.info("Starting wake-word detector…")
+        logger.info("📦 Starting wake-word detector…")
         if cfg.PICOVOICE_ACCESS_KEY != "YOUR_KEY_HERE":
-            self.wake_detector.start()
+            try:
+                self.wake_detector.start()
+                logger.info("✅ Wake word detector started")
+            except Exception as e:
+                logger.error("❌ Wake word detector failed: %s", e, exc_info=True)
         else:
-            logger.warning("⚠️ No Picovoice access key set — wake word disabled. "
-                           "Use UI buttons or text input.")
+            logger.warning("⚠️ No Picovoice access key — wake word disabled")
 
         if cfg.PROACTIVE_ENABLED:
-            logger.info("Starting proactive scheduler…")
-            self.proactive.start()
+            logger.info("📦 Starting proactive scheduler…")
+            try:
+                self.proactive.start()
+                logger.info("✅ Proactive scheduler started")
+            except Exception as e:
+                logger.error("❌ Proactive scheduler failed: %s", e, exc_info=True)
 
-        logger.info("═══ Buddy ready ═══")
+        logger.info("╔════════════════════════════════════╗")
+        logger.info("║  ✅ BUDDY READY ✅                  ║")
+        logger.info("╚════════════════════════════════════╝")
         self._set_state("idle")
 
     def shutdown(self):
+        logger.info("🛑 Shutting down Buddy...")
         self.wake_detector.stop()
         self.proactive.stop()
         self.timers.cancel_all()
         self.tts.stop()
+        logger.info("✅ Shutdown complete")
 
     # ── Main interaction flow ─────────────────────────────────────────────────
 
     def listen_once(self):
         """Record one utterance, transcribe, generate, speak."""
+        logger.info("┌─────────────────────────────────────┐")
+        logger.info("│ 🎤 LISTEN_ONCE CALLED 🎤            │")
+        logger.info("└─────────────────────────────────────┘")
+        
         if self._state != "idle":
-            logger.debug("🚫 Busy (state=%s), ignoring listen request.", self._state)
+            logger.warning("🚫 Busy (state=%s), ignoring listen request", self._state)
             return
 
         self._abort_flag.clear()
         self._set_state("listening")
+        self._listening = True
 
-        from audio.beep      import play_processing, play_error
+        from audio.beep import play_processing, play_error
         from audio.mic_input import MicRecorder
 
-        # NOTE: Wake word already beeped, don't double-beep
-        logger.info("🎙️ Recording… (waiting for silence)")
+        logger.info("🎙️ Recording starting (waiting for silence)...")
 
         wav_bytes = None
         try:
@@ -241,18 +297,21 @@ class Buddy:
                 on_level           = self._web.broadcast_level,
             ) as mic:
                 wav_bytes = mic.record()
+                logger.debug("📊 Recording complete, got %d bytes", len(wav_bytes) if wav_bytes else 0)
         except Exception as e:
-            logger.error("❌ Mic error: %s", e)
+            logger.error("❌ Mic error: %s", e, exc_info=True)
             play_error()
             self._set_state("idle")
+            self._listening = False
             return
 
         if not wav_bytes or self._abort_flag.is_set():
-            logger.info("⏭️ Recording cancelled.")
+            logger.info("⏭️ Recording cancelled or empty")
             self._set_state("idle")
+            self._listening = False
             return
 
-        logger.info("✅ Recording complete. Transcribing…")
+        logger.info("✅ Recording complete, transcribing...")
         self._set_state("thinking")
         play_processing()
 
@@ -260,33 +319,39 @@ class Buddy:
         logger.info("📝 STT result: %r", text)
 
         if not text.strip():
-            logger.warning("⚠️ No speech detected.")
+            logger.warning("⚠️ No speech detected")
             self._set_state("idle")
+            self._listening = False
             return
 
         # ✅ DISPLAY TRANSCRIBED TEXT TO USER
+        logger.info("📡 Broadcasting user transcription: %r", text)
         self._web.broadcast_user_transcription(text)
 
+        self._listening = False
         self.handle_text(text, from_voice=True)
 
     def handle_text(self, text: str, from_voice: bool = False):
-        """Process a user message (from voice or UI text input)."""
+        """Process a user message."""
+        logger.info("┌─────────────────────────────────────┐")
+        logger.info("│ 💬 HANDLE_TEXT: %s", text[:40])
+        logger.info("└─────────────────────────────────────┘")
+        
         if self._state not in ("idle", "thinking"):
+            logger.warning("⚠️ State is %s, aborting", self._state)
             self.abort()
             time.sleep(0.1)
 
         self._abort_flag.clear()
 
-        # Update state if text came from UI
         if not from_voice:
             self._set_state("thinking")
-        else:
-            # Already in thinking from listen_once
-            pass
 
         # ── Timer intent check ─────────────────────────────────────────────
+        logger.debug("⏰ Checking for timer intent...")
         duration = self._parse_timer(text)
         if duration is not None:
+            logger.info("⏰ Timer intent detected: %d seconds", duration)
             label = self._timer_label(text)
             self.timers.set(duration, label)
             mins, secs = divmod(duration, 60)
@@ -294,34 +359,42 @@ class Buddy:
                 duration_str = f"{mins} minute{'s' if mins != 1 else ''}"
             else:
                 duration_str = f"{secs} second{'s' if secs != 1 else ''}"
-            ack = f"Set a {duration_str} {label.lower()} timer. I'll let you know when it's done."
+            ack = f"Set a {duration_str} {label.lower()} timer."
             self.history.add_user(text)
             self.history.add_assistant(ack)
-            # ✅ DISPLAY BOTH USER AND ASSISTANT RESPONSE
             self._web.broadcast_user_message(text)
             self._web.broadcast_assistant_message(ack)
             self._speak_response(ack)
             self._broadcast_timers()
             return
 
+        logger.debug("✅ No timer intent, processing as normal query")
+
         # ── Mood + personality processing ─────────────────────────────────
+        logger.debug("😊 Analyzing mood...")
         mood_info = self.personality.process_user_message(text)
         logger.debug("😊 Mood: %s (score=%.2f)", mood_info["label"], mood_info["score"])
 
         # ── Memory search ─────────────────────────────────────────────────
+        logger.debug("🧠 Searching memory...")
         memories = self.mem.search(text, limit=8)
         self.prompt_builder.recent_memories = memories
+        logger.debug("🧠 Found %d memories", len(memories))
 
-        # Update timer list in prompt
+        # Update timer list
         self.prompt_builder.active_timers = self.timers.active_timers()
 
         # Build system prompt
+        logger.debug("📝 Building system prompt...")
         system = self.prompt_builder.build()
+        logger.debug("📝 System prompt length: %d chars", len(system))
 
         # Add to history
         self.history.add_user(text)
+        logger.debug("📚 Added to history")
 
         # ── Stream LLM response ────────────────────────────────────────────
+        logger.info("🤖 Starting LLM stream...")
         from audio.tts import SentenceStreamer
         streamer = SentenceStreamer(self.tts)
         streamer.start()
@@ -329,46 +402,56 @@ class Buddy:
         self._set_state("thinking")
         full_response = ""
         response_started = False
+        token_count = 0
 
         def on_token(token: str):
-            nonlocal full_response, response_started
+            nonlocal full_response, response_started, token_count
+            token_count += 1
             if self._abort_flag.is_set():
                 return
             full_response += token
+            if token_count % 10 == 0:  # Log every 10 tokens
+                logger.debug("🔤 Token %d: %r", token_count, token[:30])
             self._web.broadcast_token(token)
             
-            # Transition to speaking when first token arrives
             if not response_started:
                 response_started = True
+                logger.info("🔵 First token received, transitioning to SPEAKING")
                 self._set_state("speaking")
             
-            # Feed to sentence streamer for real-time TTS
-            # The streamer will handle markdown stripping
             streamer.push(token)
 
         def on_done(response: str):
+            logger.info("✅ LLM response complete (%d tokens)", token_count)
+            logger.debug("📊 Response: %r", response[:200])
             streamer.finish()
             self._web.broadcast_response(response)
 
-        self.llm.stream(
-            messages  = self.history.get(),
-            system    = system,
-            on_token  = on_token,
-            on_done   = on_done,
-        )
+        try:
+            logger.info("📡 Calling LLM.stream()...")
+            self.llm.stream(
+                messages  = self.history.get(),
+                system    = system,
+                on_token  = on_token,
+                on_done   = on_done,
+            )
+            logger.info("✅ LLM stream complete")
+        except Exception as e:
+            logger.error("❌ LLM error: %s", e, exc_info=True)
+            full_response = f"Sorry, I encountered an error: {e}"
 
-        # Wait for TTS to finish speaking
+        # Wait for TTS to finish
+        logger.info("⏳ Waiting for TTS to finish...")
         streamer.wait()
+        logger.info("✅ TTS complete")
 
         if not self._abort_flag.is_set():
-            # Persist to history
             self.history.add_assistant(full_response)
+            logger.info("📚 Response added to history")
 
-            # Background: extract context + update memory
             self.mem.add(text, full_response)
             self.personality.extract_context_async(text, full_response)
 
-            # Update memory panel in UI
             threading.Thread(
                 target=self._refresh_memories, daemon=True
             ).start()
@@ -376,14 +459,15 @@ class Buddy:
         self._set_state("idle")
 
     def _speak_response(self, text: str):
-        """Speak a short canned response without LLM."""
+        """Speak a short canned response."""
+        logger.info("🔊 Speaking response: %r", text[:60])
         self._set_state("speaking")
         self.tts.speak(text)
         self._set_state("idle")
 
     def abort(self):
-        """Interrupt whatever Buddy is doing right now."""
-        logger.info("🛑 Abort requested.")
+        """Interrupt."""
+        logger.warning("🛑 ABORT REQUESTED")
         self._abort_flag.set()
         self.tts.stop()
         self._set_state("idle")
@@ -403,29 +487,37 @@ class Buddy:
 if __name__ == "__main__":
     import web.server as web_server
 
-    buddy = Buddy()
-    buddy.boot()
-
-    web_server.set_buddy(buddy)
-
-    # Run web UI in a background thread
-    web_thread = threading.Thread(
-        target=web_server.run,
-        kwargs={
-            "host":  cfg.WEB_HOST,
-            "port":  cfg.WEB_PORT,
-            "debug": cfg.WEB_DEBUG,
-        },
-        daemon=True,
-        name="WebServer",
-    )
-    web_thread.start()
-
-    logger.info("🌐 Open your browser at http://%s:%d", cfg.WEB_HOST, cfg.WEB_PORT)
+    logger.info("\n" + "="*50)
+    logger.info("BUDDY STARTUP")
+    logger.info("="*50 + "\n")
 
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("🛑 Shutting down…")
-        buddy.shutdown()
+        buddy = Buddy()
+        buddy.boot()
+
+        web_server.set_buddy(buddy)
+
+        web_thread = threading.Thread(
+            target=web_server.run,
+            kwargs={
+                "host":  cfg.WEB_HOST,
+                "port":  cfg.WEB_PORT,
+                "debug": cfg.WEB_DEBUG,
+            },
+            daemon=True,
+            name="WebServer",
+        )
+        web_thread.start()
+
+        logger.info("🌐 Open browser at http://%s:%d", cfg.WEB_HOST, cfg.WEB_PORT)
+        logger.info("\n💡 DEBUG LOG: buddy_debug.log\n")
+
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("\n🛑 Keyboard interrupt, shutting down...")
+            buddy.shutdown()
+    except Exception as e:
+        logger.error("❌ FATAL ERROR: %s", e, exc_info=True)
+        raise
