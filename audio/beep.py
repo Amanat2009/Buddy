@@ -1,93 +1,65 @@
 """
-audio/beep.py — Generates confirmation / error beep tones in-code.
-No audio files needed — everything is synthesised with numpy.
+audio/beep.py — Synthesised confirmation / error tones.
+Uses audio.device (sounddevice) instead of simpleaudio.
+All play_* functions are non-blocking daemon threads.
 """
 
-import numpy as np
-import simpleaudio as sa
 import threading
+import numpy as np
+from audio.device import play_array
 
 
-def _play_wave(samples: np.ndarray, sample_rate: int = 44100):
-    """Play a numpy array as audio (non-blocking)."""
-    audio = (samples * 32767).astype(np.int16)
-    play_obj = sa.play_buffer(audio, 1, 2, sample_rate)
-    play_obj.wait_done()
-
-
-def _tone(freq: float, duration: float, volume: float = 0.4,
-          sample_rate: int = 44100, fade_ms: int = 10) -> np.ndarray:
-    """Synthesise a sine-wave tone with a short fade in/out to avoid clicks."""
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+def _tone(freq, duration, volume=0.35, sample_rate=44100, fade_ms=12):
+    t    = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
     wave = np.sin(2 * np.pi * freq * t) * volume
-
-    fade_samples = int(sample_rate * fade_ms / 1000)
-    fade_in  = np.linspace(0, 1, fade_samples)
-    fade_out = np.linspace(1, 0, fade_samples)
-    wave[:fade_samples]  *= fade_in
-    wave[-fade_samples:] *= fade_out
+    fade_n = int(sample_rate * fade_ms / 1000)
+    wave[:fade_n]  *= np.linspace(0.0, 1.0, fade_n)
+    wave[-fade_n:] *= np.linspace(1.0, 0.0, fade_n)
     return wave
 
 
-def play_wake_confirm(sample_rate: int = 44100):
-    """Two ascending tones — heard when wake word is detected."""
-    def _run():
-        silence = np.zeros(int(sample_rate * 0.04))
-        wave = np.concatenate([
-            _tone(880, 0.07, volume=0.35, sample_rate=sample_rate),
-            silence,
-            _tone(1320, 0.10, volume=0.35, sample_rate=sample_rate),
-        ])
-        _play_wave(wave, sample_rate)
-
-    threading.Thread(target=_run, daemon=True).start()
+def _silence(ms, sample_rate=44100):
+    return np.zeros(int(sample_rate * ms / 1000))
 
 
-def play_listening_start(sample_rate: int = 44100):
-    """Single soft bloop — recording started."""
-    def _run():
-        _play_wave(_tone(660, 0.06, volume=0.25, sample_rate=sample_rate),
-                   sample_rate)
-
-    threading.Thread(target=_run, daemon=True).start()
+def _async_play(wave, sample_rate=44100):
+    threading.Thread(target=play_array, args=(wave, sample_rate, True), daemon=True).start()
 
 
-def play_processing(sample_rate: int = 44100):
-    """Subtle descending blip — STT done, LLM thinking."""
-    def _run():
-        silence = np.zeros(int(sample_rate * 0.03))
-        wave = np.concatenate([
-            _tone(1000, 0.05, volume=0.2, sample_rate=sample_rate),
-            silence,
-            _tone(800, 0.05, volume=0.2, sample_rate=sample_rate),
-        ])
-        _play_wave(wave, sample_rate)
-
-    threading.Thread(target=_run, daemon=True).start()
+def play_wake_confirm(sample_rate=44100):
+    wave = np.concatenate([
+        _tone(880,  0.07, 0.32, sample_rate),
+        _silence(40, sample_rate),
+        _tone(1320, 0.10, 0.32, sample_rate),
+    ])
+    _async_play(wave, sample_rate)
 
 
-def play_error(sample_rate: int = 44100):
-    """Harsh low buzz — something went wrong."""
-    def _run():
-        t = np.linspace(0, 0.18, int(sample_rate * 0.18), endpoint=False)
-        wave = (
-            np.sin(2 * np.pi * 220 * t) * 0.3
-            + np.sin(2 * np.pi * 180 * t) * 0.2
-        )
-        _play_wave(wave, sample_rate)
-
-    threading.Thread(target=_run, daemon=True).start()
+def play_listening_start(sample_rate=44100):
+    _async_play(_tone(660, 0.06, 0.22, sample_rate), sample_rate)
 
 
-def play_timer_done(sample_rate: int = 44100):
-    """Three ascending chimes — timer finished."""
-    def _run():
-        silence = np.zeros(int(sample_rate * 0.08))
-        wave = np.concatenate([
-            _tone(523, 0.15, volume=0.4, sample_rate=sample_rate), silence,
-            _tone(659, 0.15, volume=0.4, sample_rate=sample_rate), silence,
-            _tone(784, 0.25, volume=0.4, sample_rate=sample_rate),
-        ])
-        _play_wave(wave, sample_rate)
+def play_processing(sample_rate=44100):
+    wave = np.concatenate([
+        _tone(1000, 0.05, 0.18, sample_rate),
+        _silence(30, sample_rate),
+        _tone(800,  0.05, 0.18, sample_rate),
+    ])
+    _async_play(wave, sample_rate)
 
-    threading.Thread(target=_run, daemon=True).start()
+
+def play_error(sample_rate=44100):
+    t    = np.linspace(0, 0.20, int(sample_rate * 0.20), endpoint=False)
+    wave = np.sin(2 * np.pi * 220 * t) * 0.28 + np.sin(2 * np.pi * 180 * t) * 0.18
+    _async_play(wave, sample_rate)
+
+
+def play_timer_done(sample_rate=44100):
+    wave = np.concatenate([
+        _tone(523, 0.15, 0.38, sample_rate),
+        _silence(80, sample_rate),
+        _tone(659, 0.15, 0.38, sample_rate),
+        _silence(80, sample_rate),
+        _tone(784, 0.25, 0.40, sample_rate),
+    ])
+    _async_play(wave, sample_rate)
