@@ -1,12 +1,14 @@
 {
   "goals": [
-    "explain what a porcupine is",
-    "how to make a sausage",
-    "What is my name?",
+    "match exam",
     "information about porcupine",
-    "learn about porcupines",
+    "how to make a sausage",
+    "learn how to make sausage",
+    "What is my name?",
     "to confirm name",
-    "learn how to make sausage"
+    "learn about porcupines",
+    "explain what a porcupine is",
+    "checking the exam date"
   ],
   "open_loops": [
     "need to clarify if the user wants info on the animal or another reference",
